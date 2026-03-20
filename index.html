@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI vs Human — Hesaplamalı Estetik Analiz</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a0f;color:#e0e0e0;font-family:'DM Sans',sans-serif;overflow-x:hidden}
+.header{padding:28px 24px 16px}
+.header h1{font-size:clamp(18px,4vw,28px);font-weight:300;color:#fff}
+.header h1 span{font-weight:700}
+.header p{margin-top:6px;font-size:clamp(10px,2.5vw,14px);color:#777;font-family:'JetBrains Mono',monospace}
+.controls{display:flex;gap:8px;padding:12px 24px;flex-wrap:wrap;align-items:center}
+.control-group{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+.control-label{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#555;margin-right:6px;font-family:'JetBrains Mono',monospace}
+.btn{padding:6px 12px;border:1px solid rgba(255,255,255,0.12);background:transparent;color:#999;font-size:11px;font-family:'DM Sans',sans-serif;cursor:pointer;border-radius:4px;transition:all .2s;white-space:nowrap}
+.btn:hover{border-color:rgba(255,255,255,0.3);color:#ccc}
+.btn.active{background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.3);color:#fff}
+.btn.ai-active{background:rgba(220,60,60,0.15);border-color:rgba(220,60,60,0.5);color:#e85555}
+.btn.human-active{background:rgba(60,120,220,0.15);border-color:rgba(60,120,220,0.5);color:#5588ee}
+.separator{width:1px;height:20px;background:rgba(255,255,255,0.08);margin:0 8px}
+select.btn{padding:5px 8px;background:#0e0e14;color:#999}
+.canvas-wrap{position:relative;margin:12px 24px;background:#0e0e14;border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow:hidden;touch-action:none}
+canvas{display:block;cursor:crosshair;width:100%;height:auto}
+.tooltip{display:none;position:absolute;pointer-events:none;background:#1a1a24;border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:8px;z-index:100;box-shadow:0 8px 32px rgba(0,0,0,0.6)}
+.tooltip img{width:140px;height:auto;border-radius:4px;display:block}
+.tooltip-info{margin-top:6px;font-size:10px;font-family:'JetBrains Mono',monospace;color:#aaa;line-height:1.6}
+.tooltip-info .ai{color:#e85555}
+.tooltip-info .human{color:#5588ee}
+.stats{padding:12px 24px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#555}
+.stats span{color:#888}
+.zoom-info{padding:4px 24px;font-family:'JetBrains Mono',monospace;font-size:10px;color:#444}
+.footer{padding:24px;border-top:1px solid rgba(255,255,255,0.06);font-size:11px;color:#444;font-family:'JetBrains Mono',monospace}
+@media(max-width:600px){
+  .separator{display:none}
+  .controls{gap:6px;padding:8px 16px}
+  .header{padding:20px 16px 12px}
+  .canvas-wrap{margin:8px 16px}
+  .stats,.zoom-info{padding:8px 16px}
+  .footer{padding:16px}
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1><span>AI vs Human</span> — Hesaplamalı Estetik Analiz</h1>
+  <p>Manovich Metodolojisi · 720 Görsel · 4 Kategori · Brightness / Saturation / Hue</p>
+</div>
+<div class="controls">
+  <span class="control-label">Grup</span>
+  <div class="control-group" id="groupBtns">
+    <button class="btn ai-active" data-group="AI">AI</button>
+    <button class="btn human-active" data-group="Human">Human</button>
+  </div>
+  <div class="separator"></div>
+  <span class="control-label">Kategori</span>
+  <div class="control-group" id="catBtns">
+    <button class="btn active" data-cat="all">Tümü</button>
+    <button class="btn" data-cat="portrait">Portre</button>
+    <button class="btn" data-cat="landscape">Manzara</button>
+    <button class="btn" data-cat="abstract">Soyut</button>
+    <button class="btn" data-cat="cityscape">Kentsel</button>
+  </div>
+  <div class="separator"></div>
+  <span class="control-label">X</span>
+  <select id="xAxis" class="btn"><option value="brightness_median">Brightness</option><option value="saturation_median">Saturation</option><option value="hue_median">Hue</option></select>
+  <span class="control-label">Y</span>
+  <select id="yAxis" class="btn"><option value="saturation_median" selected>Saturation</option><option value="brightness_median">Brightness</option><option value="hue_median">Hue</option></select>
+</div>
+<div class="zoom-info" id="zoomInfo">Zoom: 1.0x — Fare tekerleği ile yakınlaştır, sürükle ile kaydır</div>
+<div class="canvas-wrap" id="canvasWrap">
+  <canvas id="chart"></canvas>
+  <div class="tooltip" id="tooltip">
+    <img id="tooltipImg" src="" alt="">
+    <div class="tooltip-info" id="tooltipInfo"></div>
+  </div>
+</div>
+<div class="stats" id="stats"></div>
+<div class="footer">Stable Diffusion 1.5 + Deliberate v2 · Unsplash · ImageJ imageMeasure · Manovich Cultural Analytics (2020)</div>
+
+<script>
+let allData = [];
+let activeGroups = new Set(['AI','Human']);
+let activeCat = 'all';
+let hoveredPoint = null;
+let zoomLevel = 1;
+let panX = 0, panY = 0;
+let isDragging = false, dragStartX = 0, dragStartY = 0, panStartX = 0, panStartY = 0;
+const IMG_ZOOM_THRESHOLD = 3;
+
+const canvas = document.getElementById('chart');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('canvasWrap');
+const tooltip = document.getElementById('tooltip');
+const tooltipImg = document.getElementById('tooltipImg');
+const tooltipInfo = document.getElementById('tooltipInfo');
+
+const imageCache = {};
+function loadImage(filename) {
+  if (imageCache[filename]) return imageCache[filename];
+  const img = new Image();
+  img.src = 'images/' + filename;
+  img.onload = () => draw();
+  imageCache[filename] = img;
+  return img;
+}
+
+function getCanvasSize() {
+  const rect = wrap.getBoundingClientRect();
+  const w = rect.width;
+  const h = Math.max(400, Math.min(w * 0.6, 640));
+  return { w, h };
+}
+
+function initCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const { w, h } = getCanvasSize();
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { w, h };
+}
+
+function parseGroup(fn) { return fn.startsWith('ai_') ? 'AI' : fn.startsWith('human_') ? 'Human' : 'Unknown'; }
+function parseCategory(fn) {
+  const f = fn.toLowerCase();
+  if (f.includes('portrait') || f.includes('portre')) return 'portrait';
+  if (f.includes('landscape')) return 'landscape';
+  if (f.includes('abstract') || f.includes('absract')) return 'abstract';
+  if (f.includes('cityscape')) return 'cityscape';
+  return 'unknown';
+}
+function catLabel(c) { return {portrait:'Portre',landscape:'Manzara',abstract:'Soyut',cityscape:'Kentsel'}[c]||c; }
+
+async function loadData() {
+  const resp = await fetch('measurements.txt');
+  const text = await resp.text();
+  const lines = text.trim().split('\n');
+  
+  for (let i = 1; i < lines.length; i++) {
+    const raw = lines[i];
+    if (!raw.trim()) continue;
+    
+    // Split by any whitespace (tabs or multiple spaces)
+    const cols = raw.trim().split(/\s+/);
+    if (cols.length < 8) continue;
+    
+    const filename = cols[0];
+    if (!filename || filename === '') continue;
+    
+    // Columns: filename, imageID, brightness_median, brightness_stdev, saturation_median, saturation_stdev, hue_median, hue_stdev
+    const bm = parseFloat(cols[2]);
+    const bs = parseFloat(cols[3]);
+    const sm = parseFloat(cols[4]);
+    const ss = parseFloat(cols[5]);
+    const hm = parseFloat(cols[6]);
+    const hs = parseFloat(cols[7]);
+    
+    if (isNaN(bm) || isNaN(sm) || isNaN(hm)) continue;
+    
+    allData.push({
+      filename, group: parseGroup(filename), category: parseCategory(filename),
+      brightness_median: bm, brightness_stdev: bs,
+      saturation_median: sm, saturation_stdev: ss,
+      hue_median: hm, hue_stdev: hs
+    });
+  }
+  console.log('Loaded:', allData.length, 'images');
+  console.log('Sample:', allData[0]);
+  updateStats();
+  draw();
+}
+
+function getFiltered() {
+  return allData.filter(d => activeGroups.has(d.group) && (activeCat === 'all' || d.category === activeCat));
+}
+
+const PAD = { top: 40, right: 40, bottom: 50, left: 60 };
+const catShapes = { portrait:'circle', landscape:'diamond', abstract:'square', cityscape:'triangle' };
+const axisLabel = { brightness_median:'Brightness', saturation_median:'Saturation', hue_median:'Hue' };
+
+function draw() {
+  const { w, h } = initCanvas();
+  const data = getFiltered();
+  const xKey = document.getElementById('xAxis').value;
+  const yKey = document.getElementById('yAxis').value;
+
+  ctx.fillStyle = '#0e0e14';
+  ctx.fillRect(0, 0, w, h);
+
+  if (data.length === 0) return;
+
+  const plotW = w - PAD.left - PAD.right;
+  const plotH = h - PAD.top - PAD.bottom;
+
+  // Transform functions with zoom and pan
+  function toX(v) { return PAD.left + ((v / 255) * plotW - panX) * zoomLevel + plotW * (1 - zoomLevel) / 2; }
+  function toY(v) { return PAD.top + plotH - ((v / 255) * plotH - panY) * zoomLevel - plotH * (1 - zoomLevel) / 2; }
+  function fromX(px) { return ((px - PAD.left - plotW * (1 - zoomLevel) / 2) / zoomLevel + panX) / plotW * 255; }
+  function fromY(py) { return (plotH - (py - PAD.top + plotH * (1 - zoomLevel) / 2) / zoomLevel - panY) / plotH * 255; }
+
+  // Clip plot area
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(PAD.left, PAD.top, plotW, plotH);
+  ctx.clip();
+
+  // Grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.lineWidth = 1;
+  for (let v = 0; v <= 255; v += 25) {
+    const x = toX(v), y = toY(v);
+    if (x >= PAD.left && x <= PAD.left + plotW) { ctx.beginPath(); ctx.moveTo(x, PAD.top); ctx.lineTo(x, PAD.top + plotH); ctx.stroke(); }
+    if (y >= PAD.top && y <= PAD.top + plotH) { ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + plotW, y); ctx.stroke(); }
+  }
+
+  // Points or images
+  const showImages = zoomLevel >= IMG_ZOOM_THRESHOLD;
+  const pointSize = Math.max(3, Math.min(6, 4 * zoomLevel));
+  const imgSize = Math.max(20, Math.min(80, 20 * zoomLevel));
+
+  data.forEach((d, i) => {
+    const x = toX(d[xKey]);
+    const y = toY(d[yKey]);
+    
+    if (x < PAD.left - imgSize || x > PAD.left + plotW + imgSize || y < PAD.top - imgSize || y > PAD.top + plotH + imgSize) {
+      d._x = -999; d._y = -999; return;
+    }
+
+    d._x = x; d._y = y;
+
+    if (showImages) {
+      const img = loadImage(d.filename);
+      if (img.complete && img.naturalWidth > 0) {
+        const aspect = img.naturalHeight / img.naturalWidth;
+        const iw = imgSize;
+        const ih = imgSize * aspect;
+        ctx.save();
+        ctx.globalAlpha = 0.9;
+        ctx.drawImage(img, x - iw/2, y - ih/2, iw, ih);
+        // Border color by group
+        ctx.strokeStyle = d.group === 'AI' ? 'rgba(220,70,70,0.8)' : 'rgba(70,120,220,0.8)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x - iw/2, y - ih/2, iw, ih);
+        ctx.restore();
+      }
+    } else {
+      const isAI = d.group === 'AI';
+      const color = isAI ? 'rgba(220,70,70,0.7)' : 'rgba(70,120,220,0.7)';
+      const r = hoveredPoint === i ? pointSize * 1.8 : pointSize;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      const shape = catShapes[d.category] || 'circle';
+      if (shape === 'circle') ctx.arc(x, y, r, 0, Math.PI * 2);
+      else if (shape === 'square') ctx.rect(x-r, y-r, r*2, r*2);
+      else if (shape === 'diamond') { ctx.moveTo(x,y-r); ctx.lineTo(x+r,y); ctx.lineTo(x,y+r); ctx.lineTo(x-r,y); }
+      else if (shape === 'triangle') { ctx.moveTo(x,y-r); ctx.lineTo(x+r,y+r); ctx.lineTo(x-r,y+r); }
+      ctx.fill();
+    }
+  });
+
+  ctx.restore();
+
+  // Axis labels
+  ctx.fillStyle = '#555';
+  ctx.font = '10px JetBrains Mono';
+  ctx.textAlign = 'center';
+  for (let v = 0; v <= 255; v += 50) {
+    const x = toX(v);
+    if (x >= PAD.left && x <= PAD.left + plotW) ctx.fillText(v, x, PAD.top + plotH + 18);
+    const y = toY(v);
+    if (y >= PAD.top && y <= PAD.top + plotH) { ctx.textAlign = 'right'; ctx.fillText(v, PAD.left - 8, y + 4); ctx.textAlign = 'center'; }
+  }
+
+  ctx.fillStyle = '#666';
+  ctx.font = '12px DM Sans';
+  ctx.fillText(axisLabel[xKey], PAD.left + plotW/2, h - 6);
+  ctx.save();
+  ctx.translate(14, PAD.top + plotH/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.fillText(axisLabel[yKey], 0, 0);
+  ctx.restore();
+
+  // Legend
+  const lx = w - (w < 500 ? 100 : 180);
+  let ly = PAD.top + 8;
+  ctx.font = '10px DM Sans';
+  ctx.textAlign = 'left';
+  [['circle','Portre'],['diamond','Manzara'],['square','Soyut'],['triangle','Kentsel']].forEach(([s,l]) => {
+    ctx.fillStyle = '#666';
+    ctx.beginPath();
+    if (s==='circle') ctx.arc(lx,ly,3,0,Math.PI*2);
+    else if (s==='square') ctx.rect(lx-3,ly-3,6,6);
+    else if (s==='diamond') { ctx.moveTo(lx,ly-3);ctx.lineTo(lx+3,ly);ctx.lineTo(lx,ly+3);ctx.lineTo(lx-3,ly); }
+    else if (s==='triangle') { ctx.moveTo(lx,ly-3);ctx.lineTo(lx+3,ly+3);ctx.lineTo(lx-3,ly+3); }
+    ctx.fill();
+    ctx.fillStyle='#888'; ctx.fillText(l,lx+10,ly+3);
+    ly+=18;
+  });
+  ly+=8;
+  ctx.fillStyle='rgba(220,70,70,0.8)';ctx.beginPath();ctx.arc(lx,ly,3,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#888';ctx.fillText('AI',lx+10,ly+3);ly+=18;
+  ctx.fillStyle='rgba(70,120,220,0.8)';ctx.beginPath();ctx.arc(lx,ly,3,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#888';ctx.fillText('Human',lx+10,ly+3);
+
+  document.getElementById('zoomInfo').textContent = `Zoom: ${zoomLevel.toFixed(1)}x — ${showImages ? 'Görsel modu' : 'Nokta modu'} — Fare tekerleği ile yakınlaştır, sürükle ile kaydır`;
+}
+
+function updateStats() {
+  const data = getFiltered();
+  const ai = data.filter(d => d.group==='AI').length;
+  const hu = data.filter(d => d.group==='Human').length;
+  document.getElementById('stats').innerHTML = `Gösterilen: <span>${data.length}</span> görsel · AI: <span style="color:#e85555">${ai}</span> · Human: <span style="color:#5588ee">${hu}</span> · Toplam: <span>${allData.length}</span>`;
+}
+
+// Zoom with mouse wheel
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const delta = e.deltaY > 0 ? 0.9 : 1.1;
+  const newZoom = Math.max(0.5, Math.min(20, zoomLevel * delta));
+  
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  
+  zoomLevel = newZoom;
+  draw();
+}, { passive: false });
+
+// Pan with drag
+canvas.addEventListener('mousedown', (e) => {
+  isDragging = true;
+  dragStartX = e.clientX;
+  dragStartY = e.clientY;
+  panStartX = panX;
+  panStartY = panY;
+  canvas.style.cursor = 'grabbing';
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (isDragging) {
+    const { w, h } = getCanvasSize();
+    const plotW = w - PAD.left - PAD.right;
+    const plotH = h - PAD.top - PAD.bottom;
+    const dx = (e.clientX - dragStartX) / zoomLevel / plotW * 255;
+    const dy = -(e.clientY - dragStartY) / zoomLevel / plotH * 255;
+    panX = panStartX - dx;
+    panY = panStartY - dy;
+    draw();
+    return;
+  }
+
+  // Hover
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const data = getFiltered();
+  let closest = -1, minDist = 20;
+
+  data.forEach((d, i) => {
+    if (d._x < 0) return;
+    const dist = Math.sqrt((d._x - mx) ** 2 + (d._y - my) ** 2);
+    if (dist < minDist) { minDist = dist; closest = i; }
+  });
+
+  if (closest >= 0 && closest !== hoveredPoint) {
+    hoveredPoint = closest;
+    const d = data[closest];
+    tooltipImg.src = 'images/' + d.filename;
+    const gc = d.group === 'AI' ? 'ai' : 'human';
+    tooltipInfo.innerHTML = `<span class="${gc}">${d.group}</span> · ${catLabel(d.category)}<br>B:${d.brightness_median} S:${d.saturation_median} H:${d.hue_median}`;
+    let tx = d._x + 16, ty = d._y - 100;
+    const wr = wrap.getBoundingClientRect();
+    if (tx + 170 > wr.width) tx = d._x - 170;
+    if (ty < 0) ty = d._y + 16;
+    tooltip.style.left = tx + 'px';
+    tooltip.style.top = ty + 'px';
+    tooltip.style.display = 'block';
+    if (zoomLevel < IMG_ZOOM_THRESHOLD) draw();
+  } else if (closest < 0 && hoveredPoint !== null) {
+    hoveredPoint = null;
+    tooltip.style.display = 'none';
+    if (zoomLevel < IMG_ZOOM_THRESHOLD) draw();
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  isDragging = false;
+  canvas.style.cursor = 'crosshair';
+});
+
+canvas.addEventListener('mouseleave', () => {
+  hoveredPoint = null;
+  tooltip.style.display = 'none';
+  if (zoomLevel < IMG_ZOOM_THRESHOLD) draw();
+});
+
+// Touch support for mobile
+let lastTouchDist = 0;
+canvas.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 1) {
+    isDragging = true;
+    dragStartX = e.touches[0].clientX;
+    dragStartY = e.touches[0].clientY;
+    panStartX = panX; panStartY = panY;
+  } else if (e.touches.length === 2) {
+    isDragging = false;
+    lastTouchDist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+  }
+  e.preventDefault();
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  if (e.touches.length === 1 && isDragging) {
+    const { w, h } = getCanvasSize();
+    const plotW = w - PAD.left - PAD.right;
+    const plotH = h - PAD.top - PAD.bottom;
+    const dx = (e.touches[0].clientX - dragStartX) / zoomLevel / plotW * 255;
+    const dy = -(e.touches[0].clientY - dragStartY) / zoomLevel / plotH * 255;
+    panX = panStartX - dx; panY = panStartY - dy;
+    draw();
+  } else if (e.touches.length === 2) {
+    const dist = Math.hypot(e.touches[0].clientX - e.touches[1].clientX, e.touches[0].clientY - e.touches[1].clientY);
+    if (lastTouchDist > 0) {
+      const scale = dist / lastTouchDist;
+      zoomLevel = Math.max(0.5, Math.min(20, zoomLevel * scale));
+      draw();
+    }
+    lastTouchDist = dist;
+  }
+  e.preventDefault();
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => { isDragging = false; lastTouchDist = 0; });
+
+// Double click to reset zoom
+canvas.addEventListener('dblclick', () => { zoomLevel = 1; panX = 0; panY = 0; draw(); });
+
+// Button events
+document.querySelectorAll('#groupBtns .btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const g = btn.dataset.group;
+    if (activeGroups.has(g)) { if (activeGroups.size > 1) activeGroups.delete(g); }
+    else activeGroups.add(g);
+    document.querySelectorAll('#groupBtns .btn').forEach(b => {
+      b.className = 'btn' + (activeGroups.has(b.dataset.group) ? (b.dataset.group==='AI' ? ' ai-active' : ' human-active') : '');
+    });
+    updateStats(); draw();
+  });
+});
+
+document.querySelectorAll('#catBtns .btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    activeCat = btn.dataset.cat;
+    document.querySelectorAll('#catBtns .btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    updateStats(); draw();
+  });
+});
+
+document.getElementById('xAxis').addEventListener('change', () => { zoomLevel=1;panX=0;panY=0;draw(); });
+document.getElementById('yAxis').addEventListener('change', () => { zoomLevel=1;panX=0;panY=0;draw(); });
+window.addEventListener('resize', draw);
+
+loadData();
+</script>
+</body>
+</html>
