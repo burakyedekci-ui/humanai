@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI vs Human — Hesaplamalı Estetik Analiz</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #0a0a0f;
+  color: #e0e0e0;
+  font-family: 'DM Sans', sans-serif;
+  overflow-x: hidden;
+}
+
+.header {
+  padding: 40px 48px 24px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+
+.header h1 {
+  font-size: 28px;
+  font-weight: 300;
+  letter-spacing: -0.5px;
+  color: #fff;
+}
+
+.header h1 span { font-weight: 700; }
+
+.header p {
+  margin-top: 8px;
+  font-size: 14px;
+  color: #777;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.controls {
+  display: flex;
+  gap: 12px;
+  padding: 20px 48px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.control-group {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.control-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: #555;
+  margin-right: 8px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.btn {
+  padding: 7px 16px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: transparent;
+  color: #999;
+  font-size: 12px;
+  font-family: 'DM Sans', sans-serif;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.btn:hover { border-color: rgba(255,255,255,0.3); color: #ccc; }
+.btn.active { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.3); color: #fff; }
+.btn.ai-active { background: rgba(220,60,60,0.15); border-color: rgba(220,60,60,0.5); color: #e85555; }
+.btn.human-active { background: rgba(60,120,220,0.15); border-color: rgba(60,120,220,0.5); color: #5588ee; }
+
+.separator {
+  width: 1px;
+  height: 24px;
+  background: rgba(255,255,255,0.08);
+  margin: 0 12px;
+}
+
+.canvas-wrap {
+  position: relative;
+  margin: 16px 48px;
+  background: #0e0e14;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+  cursor: crosshair;
+}
+
+.tooltip {
+  display: none;
+  position: absolute;
+  pointer-events: none;
+  background: #1a1a24;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  padding: 8px;
+  z-index: 100;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+}
+
+.tooltip img {
+  width: 160px;
+  height: auto;
+  border-radius: 4px;
+  display: block;
+}
+
+.tooltip-info {
+  margin-top: 6px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', monospace;
+  color: #aaa;
+  line-height: 1.6;
+}
+
+.tooltip-info .ai { color: #e85555; }
+.tooltip-info .human { color: #5588ee; }
+
+.stats {
+  padding: 20px 48px;
+  display: flex;
+  gap: 32px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: #555;
+}
+
+.stats span { color: #888; }
+
+.axis-select {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.footer {
+  padding: 32px 48px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  font-size: 12px;
+  color: #444;
+  font-family: 'JetBrains Mono', monospace;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span>AI vs Human</span> — Hesaplamalı Estetik Analiz</h1>
+  <p>Manovich Metodolojisi · 720 Görsel · 4 Kategori · Brightness / Saturation / Hue</p>
+</div>
+
+<div class="controls">
+  <span class="control-label">Grup</span>
+  <div class="control-group" id="groupBtns">
+    <button class="btn ai-active" data-group="AI">AI</button>
+    <button class="btn human-active" data-group="Human">Human</button>
+  </div>
+
+  <div class="separator"></div>
+
+  <span class="control-label">Kategori</span>
+  <div class="control-group" id="catBtns">
+    <button class="btn active" data-cat="all">Tümü</button>
+    <button class="btn" data-cat="portrait">Portre</button>
+    <button class="btn" data-cat="landscape">Manzara</button>
+    <button class="btn" data-cat="abstract">Soyut</button>
+    <button class="btn" data-cat="cityscape">Kentsel</button>
+  </div>
+
+  <div class="separator"></div>
+
+  <span class="control-label">X Ekseni</span>
+  <div class="axis-select">
+    <select id="xAxis" class="btn" style="padding:6px 10px;">
+      <option value="brightness_median">Brightness</option>
+      <option value="saturation_median">Saturation</option>
+      <option value="hue_median">Hue</option>
+    </select>
+  </div>
+
+  <span class="control-label">Y Ekseni</span>
+  <div class="axis-select">
+    <select id="yAxis" class="btn" style="padding:6px 10px;">
+      <option value="saturation_median">Saturation</option>
+      <option value="brightness_median">Brightness</option>
+      <option value="hue_median">Hue</option>
+    </select>
+  </div>
+</div>
+
+<div class="canvas-wrap" id="canvasWrap">
+  <canvas id="chart"></canvas>
+  <div class="tooltip" id="tooltip">
+    <img id="tooltipImg" src="" alt="">
+    <div class="tooltip-info" id="tooltipInfo"></div>
+  </div>
+</div>
+
+<div class="stats" id="stats"></div>
+
+<div class="footer">
+  Stable Diffusion 1.5 + Deliberate v2 · Unsplash · ImageJ imageMeasure · Manovich Cultural Analytics (2020)
+</div>
+
+<script>
+const CANVAS_W = 1200;
+const CANVAS_H = 640;
+const PAD = { top: 40, right: 40, bottom: 50, left: 60 };
+
+let allData = [];
+let activeGroups = new Set(['AI', 'Human']);
+let activeCat = 'all';
+let hoveredPoint = null;
+
+const canvas = document.getElementById('chart');
+const ctx = canvas.getContext('2d');
+const wrap = document.getElementById('canvasWrap');
+const tooltip = document.getElementById('tooltip');
+const tooltipImg = document.getElementById('tooltipImg');
+const tooltipInfo = document.getElementById('tooltipInfo');
+
+function initCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = wrap.getBoundingClientRect();
+  const w = rect.width;
+  const h = Math.round(w * CANVAS_H / CANVAS_W);
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { w, h };
+}
+
+function parseGroup(filename) {
+  if (filename.startsWith('ai_')) return 'AI';
+  if (filename.startsWith('human_')) return 'Human';
+  return 'Unknown';
+}
+
+function parseCategory(filename) {
+  const lower = filename.toLowerCase();
+  if (lower.includes('portrait') || lower.includes('portre')) return 'portrait';
+  if (lower.includes('landscape')) return 'landscape';
+  if (lower.includes('abstract') || lower.includes('absract')) return 'abstract';
+  if (lower.includes('cityscape')) return 'cityscape';
+  return 'unknown';
+}
+
+function catLabel(cat) {
+  const map = { portrait: 'Portre', landscape: 'Manzara', abstract: 'Soyut', cityscape: 'Kentsel' };
+  return map[cat] || cat;
+}
+
+async function loadData() {
+  const resp = await fetch('measurements.txt');
+  const text = await resp.text();
+  const lines = text.trim().split('\n');
+  const header = lines[0].split('\t').map(s => s.trim());
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split('\t').map(s => s.trim());
+    if (cols.length < 8) continue;
+    const filename = cols[0];
+    if (!filename || filename === '') continue;
+    allData.push({
+      filename: filename,
+      group: parseGroup(filename),
+      category: parseCategory(filename),
+      brightness_median: parseFloat(cols[2]),
+      brightness_stdev: parseFloat(cols[3]),
+      saturation_median: parseFloat(cols[4]),
+      saturation_stdev: parseFloat(cols[5]),
+      hue_median: parseFloat(cols[6]),
+      hue_stdev: parseFloat(cols[7])
+    });
+  }
+  updateStats();
+  draw();
+}
+
+function getFiltered() {
+  return allData.filter(d => {
+    if (!activeGroups.has(d.group)) return false;
+    if (activeCat !== 'all' && d.category !== activeCat) return false;
+    return true;
+  });
+}
+
+function draw() {
+  const { w, h } = initCanvas();
+  const data = getFiltered();
+  const xKey = document.getElementById('xAxis').value;
+  const yKey = document.getElementById('yAxis').value;
+
+  ctx.fillStyle = '#0e0e14';
+  ctx.fillRect(0, 0, w, h);
+
+  if (data.length === 0) return;
+
+  const xVals = data.map(d => d[xKey]);
+  const yVals = data.map(d => d[yKey]);
+  const xMin = 0, xMax = 255;
+  const yMin = 0, yMax = 255;
+
+  const plotW = w - PAD.left - PAD.right;
+  const plotH = h - PAD.top - PAD.bottom;
+
+  function toX(v) { return PAD.left + (v - xMin) / (xMax - xMin) * plotW; }
+  function toY(v) { return PAD.top + plotH - (v - yMin) / (yMax - yMin) * plotH; }
+
+  // Grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.lineWidth = 1;
+  for (let v = 0; v <= 255; v += 50) {
+    ctx.beginPath(); ctx.moveTo(toX(v), PAD.top); ctx.lineTo(toX(v), PAD.top + plotH); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(PAD.left, toY(v)); ctx.lineTo(PAD.left + plotW, toY(v)); ctx.stroke();
+  }
+
+  // Axis labels
+  ctx.fillStyle = '#555';
+  ctx.font = '11px JetBrains Mono';
+  ctx.textAlign = 'center';
+  for (let v = 0; v <= 255; v += 50) {
+    ctx.fillText(v, toX(v), PAD.top + plotH + 20);
+    ctx.fillText(v, PAD.left - 20, toY(v) + 4);
+  }
+
+  const xLabel = { brightness_median: 'Brightness', saturation_median: 'Saturation', hue_median: 'Hue' };
+  ctx.fillStyle = '#666';
+  ctx.font = '12px DM Sans';
+  ctx.textAlign = 'center';
+  ctx.fillText(xLabel[xKey], PAD.left + plotW / 2, h - 8);
+  ctx.save();
+  ctx.translate(14, PAD.top + plotH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText(xLabel[yKey], 0, 0);
+  ctx.restore();
+
+  // Points
+  const catShapes = { portrait: 'circle', landscape: 'diamond', abstract: 'square', cityscape: 'triangle' };
+
+  data.forEach((d, i) => {
+    const x = toX(d[xKey]);
+    const y = toY(d[yKey]);
+    const isAI = d.group === 'AI';
+    const color = isAI ? 'rgba(220,70,70,0.7)' : 'rgba(70,120,220,0.7)';
+    const r = hoveredPoint === i ? 7 : 4;
+
+    ctx.fillStyle = color;
+    ctx.beginPath();
+
+    const shape = catShapes[d.category] || 'circle';
+    if (shape === 'circle') {
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+    } else if (shape === 'square') {
+      ctx.rect(x - r, y - r, r * 2, r * 2);
+    } else if (shape === 'diamond') {
+      ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y);
+    } else if (shape === 'triangle') {
+      ctx.moveTo(x, y - r); ctx.lineTo(x + r, y + r); ctx.lineTo(x - r, y + r);
+    }
+    ctx.fill();
+
+    d._x = x; d._y = y;
+  });
+
+  // Legend
+  const legendX = w - 200;
+  let legendY = PAD.top + 10;
+  ctx.font = '11px DM Sans';
+
+  [['circle', 'Portre'], ['diamond', 'Manzara'], ['square', 'Soyut'], ['triangle', 'Kentsel']].forEach(([shape, label]) => {
+    ctx.fillStyle = '#666';
+    ctx.beginPath();
+    const lx = legendX, ly = legendY;
+    if (shape === 'circle') ctx.arc(lx, ly, 4, 0, Math.PI * 2);
+    else if (shape === 'square') ctx.rect(lx - 4, ly - 4, 8, 8);
+    else if (shape === 'diamond') { ctx.moveTo(lx, ly - 4); ctx.lineTo(lx + 4, ly); ctx.lineTo(lx, ly + 4); ctx.lineTo(lx - 4, ly); }
+    else if (shape === 'triangle') { ctx.moveTo(lx, ly - 4); ctx.lineTo(lx + 4, ly + 4); ctx.lineTo(lx - 4, ly + 4); }
+    ctx.fill();
+    ctx.fillStyle = '#888';
+    ctx.textAlign = 'left';
+    ctx.fillText(label, legendX + 14, legendY + 4);
+    legendY += 22;
+  });
+
+  legendY += 10;
+  ctx.fillStyle = 'rgba(220,70,70,0.8)';
+  ctx.beginPath(); ctx.arc(legendX, legendY, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#888'; ctx.fillText('AI', legendX + 14, legendY + 4);
+  legendY += 22;
+  ctx.fillStyle = 'rgba(70,120,220,0.8)';
+  ctx.beginPath(); ctx.arc(legendX, legendY, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#888'; ctx.fillText('Human', legendX + 14, legendY + 4);
+}
+
+function updateStats() {
+  const data = getFiltered();
+  const ai = data.filter(d => d.group === 'AI');
+  const hu = data.filter(d => d.group === 'Human');
+  document.getElementById('stats').innerHTML =
+    `Gösterilen: <span>${data.length}</span> görsel &nbsp;·&nbsp; AI: <span style="color:#e85555">${ai.length}</span> &nbsp;·&nbsp; Human: <span style="color:#5588ee">${hu.length}</span> &nbsp;·&nbsp; Toplam veri: <span>${allData.length}</span>`;
+}
+
+// Event: hover
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const data = getFiltered();
+  let closest = -1;
+  let minDist = 20;
+
+  data.forEach((d, i) => {
+    const dx = d._x - mx;
+    const dy = d._y - my;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < minDist) { minDist = dist; closest = i; }
+  });
+
+  if (closest >= 0 && closest !== hoveredPoint) {
+    hoveredPoint = closest;
+    const d = data[closest];
+    tooltipImg.src = 'images/' + d.filename;
+    const groupClass = d.group === 'AI' ? 'ai' : 'human';
+    tooltipInfo.innerHTML = `<span class="${groupClass}">${d.group}</span> · ${catLabel(d.category)}<br>B: ${d.brightness_median} · S: ${d.saturation_median} · H: ${d.hue_median}`;
+
+    let tx = d._x + 16;
+    let ty = d._y - 80;
+    const wrapRect = wrap.getBoundingClientRect();
+    if (tx + 190 > wrapRect.width) tx = d._x - 190;
+    if (ty < 0) ty = d._y + 16;
+
+    tooltip.style.left = tx + 'px';
+    tooltip.style.top = ty + 'px';
+    tooltip.style.display = 'block';
+    draw();
+  } else if (closest < 0 && hoveredPoint !== null) {
+    hoveredPoint = null;
+    tooltip.style.display = 'none';
+    draw();
+  }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  hoveredPoint = null;
+  tooltip.style.display = 'none';
+  draw();
+});
+
+// Event: group buttons
+document.querySelectorAll('#groupBtns .btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const g = btn.dataset.group;
+    if (activeGroups.has(g)) {
+      if (activeGroups.size > 1) activeGroups.delete(g);
+    } else {
+      activeGroups.add(g);
+    }
+    document.querySelectorAll('#groupBtns .btn').forEach(b => {
+      const bg = b.dataset.group;
+      b.className = 'btn' + (activeGroups.has(bg) ? (bg === 'AI' ? ' ai-active' : ' human-active') : '');
+    });
+    updateStats(); draw();
+  });
+});
+
+// Event: category buttons
+document.querySelectorAll('#catBtns .btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    activeCat = btn.dataset.cat;
+    document.querySelectorAll('#catBtns .btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    updateStats(); draw();
+  });
+});
+
+// Event: axis change
+document.getElementById('xAxis').addEventListener('change', draw);
+document.getElementById('yAxis').addEventListener('change', draw);
+
+// Event: resize
+window.addEventListener('resize', draw);
+
+// Init
+loadData();
+</script>
+
+</body>
+</html>
