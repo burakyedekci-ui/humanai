@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI vs Human</title>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;color:#fff}
+canvas{display:block;cursor:grab}
+canvas:active{cursor:grabbing}
+
+#title{position:fixed;top:14px;left:18px;font-size:14px;color:rgba(255,255,255,0.8);letter-spacing:0.5px;z-index:10;pointer-events:none}
+#title span{font-weight:bold}
+
+#buttons{position:fixed;top:12px;left:50%;transform:translateX(-50%);display:flex;gap:2px;z-index:20;background:rgba(255,255,255,0.06);border-radius:8px;padding:3px}
+.mode-btn{background:transparent;color:rgba(255,255,255,0.5);border:none;padding:8px 16px;font-family:inherit;font-size:11px;letter-spacing:0.5px;cursor:pointer;border-radius:6px;transition:all .3s}
+.mode-btn.active{background:rgba(255,255,255,0.12);color:#fff}
+.mode-btn:hover{color:rgba(255,255,255,0.8)}
+
+#group-toggle{position:fixed;top:12px;right:16px;display:flex;gap:2px;z-index:20;background:rgba(255,255,255,0.06);border-radius:8px;padding:3px}
+.grp-btn{background:transparent;border:none;padding:6px 14px;font-family:inherit;font-size:11px;cursor:pointer;border-radius:5px;transition:all .3s}
+.grp-btn.ai-on{background:rgba(220,60,60,0.2);color:#e85555}
+.grp-btn.hu-on{background:rgba(60,120,220,0.2);color:#5588ee}
+.grp-btn.off{color:rgba(255,255,255,0.3)}
+
+#axis-sel{position:fixed;bottom:14px;left:18px;display:flex;gap:8px;align-items:center;z-index:20}
+#axis-sel label{font-size:10px;color:rgba(255,255,255,0.4);letter-spacing:1px}
+#axis-sel select{background:rgba(255,255,255,0.06);color:rgba(255,255,255,0.7);border:1px solid rgba(255,255,255,0.1);padding:4px 8px;font-family:inherit;font-size:10px;border-radius:4px;cursor:pointer}
+
+#legend{position:fixed;bottom:14px;right:18px;background:rgba(0,0,0,0.7);border:1px solid rgba(255,255,255,0.1);border-radius:6px;padding:10px 14px;font-size:11px;line-height:1.8;z-index:10;pointer-events:none}
+.leg-row{display:flex;align-items:center;gap:6px}
+.leg-dot{width:8px;height:8px;flex-shrink:0}
+.leg-circ{border-radius:50%}
+.leg-sq{border-radius:0}
+.leg-dia{transform:rotate(45deg);width:7px;height:7px}
+.leg-tri{width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:8px solid;border-radius:0;background:none!important}
+
+#credit{position:fixed;bottom:40px;left:18px;font-size:10px;color:rgba(255,255,255,0.3);pointer-events:none;z-index:10}
+
+@media(max-width:600px){
+  #title{font-size:11px;top:8px;left:8px}
+  #buttons{top:32px;padding:2px}
+  .mode-btn{padding:5px 8px;font-size:9px}
+  #group-toggle{top:32px;right:8px;padding:2px}
+  .grp-btn{padding:4px 8px;font-size:9px}
+  #axis-sel{bottom:8px;left:8px;gap:4px}
+  #axis-sel label{font-size:8px}
+  #axis-sel select{font-size:8px;padding:3px 5px}
+  #legend{bottom:8px;right:8px;padding:6px 8px;font-size:9px}
+  #credit{bottom:28px;left:8px;font-size:8px}
+}
+</style>
+</head>
+<body>
+
+<canvas id="chart"></canvas>
+
+<div id="title"><span>AI</span> vs <span>Human</span></div>
+
+<div id="buttons">
+  <button class="mode-btn active" data-cat="all">Tümü</button>
+  <button class="mode-btn" data-cat="portrait">Portre</button>
+  <button class="mode-btn" data-cat="landscape">Manzara</button>
+  <button class="mode-btn" data-cat="abstract">Soyut</button>
+  <button class="mode-btn" data-cat="cityscape">Kentsel</button>
+</div>
+
+<div id="group-toggle">
+  <button class="grp-btn ai-on" data-g="AI">AI</button>
+  <button class="grp-btn hu-on" data-g="Human">Human</button>
+</div>
+
+<div id="axis-sel">
+  <label>X</label>
+  <select id="xAxis">
+    <option value="brightness_median" selected>Brightness</option>
+    <option value="saturation_median">Saturation</option>
+    <option value="hue_median">Hue</option>
+  </select>
+  <label>Y</label>
+  <select id="yAxis">
+    <option value="saturation_median" selected>Saturation</option>
+    <option value="brightness_median">Brightness</option>
+    <option value="hue_median">Hue</option>
+  </select>
+</div>
+
+<div id="legend">
+  <div class="leg-row"><div class="leg-dot leg-circ" style="background:rgba(255,255,255,0.5)"></div><span style="color:rgba(255,255,255,0.6)">Portre</span></div>
+  <div class="leg-row"><div class="leg-dot leg-dia" style="background:rgba(255,255,255,0.5)"></div><span style="color:rgba(255,255,255,0.6)">Manzara</span></div>
+  <div class="leg-row"><div class="leg-dot leg-sq" style="background:rgba(255,255,255,0.5)"></div><span style="color:rgba(255,255,255,0.6)">Soyut</span></div>
+  <div class="leg-row"><div class="leg-dot leg-tri" style="border-bottom-color:rgba(255,255,255,0.5)"></div><span style="color:rgba(255,255,255,0.6)">Kentsel</span></div>
+  <div style="height:6px"></div>
+  <div class="leg-row"><div class="leg-dot leg-circ" style="background:#dc4646"></div><span style="color:rgba(255,255,255,0.6)">AI</span></div>
+  <div class="leg-row"><div class="leg-dot leg-circ" style="background:#4678dc"></div><span style="color:rgba(255,255,255,0.6)">Human</span></div>
+</div>
+
+<div id="credit">Manovich Cultural Analytics · Stable Diffusion 1.5 · Unsplash · ImageJ</div>
+
+<script>
+let allData = [];
+let activeGroups = new Set(['AI','Human']);
+let activeCat = 'all';
+let transform = d3.zoomIdentity;
+
+const canvas = document.getElementById('chart');
+const ctx = canvas.getContext('2d');
+
+let W, H;
+function resize() {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = W * devicePixelRatio;
+  canvas.height = H * devicePixelRatio;
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+}
+resize();
+
+const isMobile = () => W < 600;
+const getMargin = () => isMobile()
+  ? { top: 55, right: 10, bottom: 55, left: 40 }
+  : { top: 50, right: 40, bottom: 60, left: 65 };
+let margin = getMargin();
+
+const imgCache = {};
+function loadImg(fn) {
+  if (imgCache[fn]) return imgCache[fn];
+  const img = new Image();
+  img.src = 'images/' + fn;
+  img.onload = () => draw();
+  imgCache[fn] = img;
+  return img;
+}
+
+function parseGroup(fn) { return fn.startsWith('ai_') ? 'AI' : fn.startsWith('human_') ? 'Human' : '?'; }
+function parseCat(fn) {
+  const f = fn.toLowerCase();
+  if (f.includes('portrait') || f.includes('portre')) return 'portrait';
+  if (f.includes('landscape')) return 'landscape';
+  if (f.includes('abstract') || f.includes('absract')) return 'abstract';
+  if (f.includes('cityscape')) return 'cityscape';
+  return 'unknown';
+}
+
+let baseScaleX, baseScaleY;
+
+function buildScales() {
+  margin = getMargin();
+  baseScaleX = d3.scaleLinear().domain([0, 255]).range([margin.left, W - margin.right]);
+  baseScaleY = d3.scaleLinear().domain([0, 255]).range([H - margin.bottom, margin.top]);
+}
+
+function getFiltered() {
+  return allData.filter(d => activeGroups.has(d.group) && (activeCat === 'all' || d.category === activeCat));
+}
+
+const axisLabel = { brightness_median: 'Brightness', saturation_median: 'Saturation', hue_median: 'Hue' };
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+
+  const data = getFiltered();
+  if (!baseScaleX) return;
+
+  const xKey = document.getElementById('xAxis').value;
+  const yKey = document.getElementById('yAxis').value;
+
+  const zx = transform.rescaleX(baseScaleX);
+  const zy = transform.rescaleY(baseScaleY);
+  const k = transform.k;
+
+  const PHOTO_THRESHOLD = 4;
+  const showPhotos = k >= PHOTO_THRESHOLD;
+
+  // Clip
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(margin.left, margin.top, W - margin.left - margin.right, H - margin.top - margin.bottom);
+  ctx.clip();
+
+  // Grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+  ctx.lineWidth = 0.5;
+  for (let v = 0; v <= 255; v += 25) {
+    const x = zx(v), y = zy(v);
+    if (x >= margin.left && x <= W - margin.right) { ctx.beginPath(); ctx.moveTo(x, margin.top); ctx.lineTo(x, H - margin.bottom); ctx.stroke(); }
+    if (y >= margin.top && y <= H - margin.bottom) { ctx.beginPath(); ctx.moveTo(margin.left, y); ctx.lineTo(W - margin.right, y); ctx.stroke(); }
+  }
+
+  // Points or photos
+  const r = Math.max(1.5, Math.min(5, 1.5 * k));
+  const imgSize = Math.max(24, Math.min(80, 12 + (k - PHOTO_THRESHOLD) * 8));
+
+  for (let i = 0; i < data.length; i++) {
+    const d = data[i];
+    const x = zx(d[xKey]);
+    const y = zy(d[yKey]);
+
+    if (x < margin.left - imgSize || x > W - margin.right + imgSize || y < margin.top - imgSize || y > H - margin.bottom + imgSize) continue;
+
+    d._sx = x; d._sy = y;
+
+    if (showPhotos) {
+      const img = loadImg(d.filename);
+      if (img.complete && img.naturalWidth > 0) {
+        const aspect = img.naturalHeight / img.naturalWidth;
+        const iw = imgSize;
+        const ih = imgSize * aspect;
+        ctx.globalAlpha = 0.92;
+        ctx.drawImage(img, x - iw / 2, y - ih / 2, iw, ih);
+        ctx.strokeStyle = d.group === 'AI' ? 'rgba(220,70,70,0.7)' : 'rgba(70,120,220,0.7)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(x - iw / 2, y - ih / 2, iw, ih);
+        ctx.globalAlpha = 1;
+      }
+    } else {
+      const isAI = d.group === 'AI';
+      ctx.fillStyle = isAI ? 'rgba(220,70,70,0.75)' : 'rgba(70,120,220,0.75)';
+      ctx.beginPath();
+
+      const cat = d.category;
+      if (cat === 'portrait') {
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+      } else if (cat === 'landscape') {
+        ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y);
+      } else if (cat === 'abstract') {
+        ctx.rect(x - r, y - r, r * 2, r * 2);
+      } else {
+        ctx.moveTo(x, y - r); ctx.lineTo(x + r, y + r); ctx.lineTo(x - r, y + r);
+      }
+      ctx.fill();
+    }
+  }
+
+  ctx.restore();
+
+  // Axes
+  ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath(); ctx.moveTo(margin.left, H - margin.bottom); ctx.lineTo(W - margin.right, H - margin.bottom); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(margin.left, margin.top); ctx.lineTo(margin.left, H - margin.bottom); ctx.stroke();
+
+  const mob = isMobile();
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.font = (mob ? '8' : '10') + 'px monospace';
+  ctx.textAlign = 'center';
+  const ticks = mob ? 5 : 8;
+  zx.ticks(ticks).forEach(t => {
+    const x = zx(t);
+    if (x >= margin.left && x <= W - margin.right) {
+      ctx.beginPath(); ctx.moveTo(x, H - margin.bottom); ctx.lineTo(x, H - margin.bottom + 4); ctx.stroke();
+      ctx.fillText(Math.round(t), x, H - margin.bottom + (mob ? 12 : 16));
+    }
+  });
+  ctx.textAlign = 'right';
+  zy.ticks(ticks).forEach(t => {
+    const y = zy(t);
+    if (y >= margin.top && y <= H - margin.bottom) {
+      ctx.beginPath(); ctx.moveTo(margin.left - 4, y); ctx.lineTo(margin.left, y); ctx.stroke();
+      ctx.fillText(Math.round(t), margin.left - 6, y + 3);
+    }
+  });
+
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.font = (mob ? '9' : '12') + 'px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(axisLabel[xKey], (margin.left + W - margin.right) / 2, H - (mob ? 4 : 10));
+  ctx.save();
+  ctx.translate(mob ? 8 : 14, (margin.top + H - margin.bottom) / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText(axisLabel[yKey], 0, 0);
+  ctx.restore();
+}
+
+// D3 zoom
+const zoom = d3.zoom()
+  .scaleExtent([1, 25])
+  .on('zoom', (event) => {
+    transform = event.transform;
+    draw();
+  });
+
+d3.select(canvas).call(zoom);
+
+// Double click reset
+canvas.addEventListener('dblclick', () => {
+  transform = d3.zoomIdentity;
+  d3.select(canvas).call(zoom.transform, d3.zoomIdentity);
+  draw();
+});
+
+// Category buttons
+document.querySelectorAll('.mode-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeCat = btn.dataset.cat;
+    transform = d3.zoomIdentity;
+    d3.select(canvas).call(zoom.transform, d3.zoomIdentity);
+    draw();
+  });
+});
+
+// Group buttons
+document.querySelectorAll('.grp-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const g = btn.dataset.g;
+    if (activeGroups.has(g)) {
+      if (activeGroups.size > 1) { activeGroups.delete(g); btn.className = 'grp-btn off'; }
+    } else {
+      activeGroups.add(g);
+      btn.className = 'grp-btn ' + (g === 'AI' ? 'ai-on' : 'hu-on');
+    }
+    draw();
+  });
+});
+
+// Axis change
+document.getElementById('xAxis').addEventListener('change', () => {
+  transform = d3.zoomIdentity;
+  d3.select(canvas).call(zoom.transform, d3.zoomIdentity);
+  draw();
+});
+document.getElementById('yAxis').addEventListener('change', () => {
+  transform = d3.zoomIdentity;
+  d3.select(canvas).call(zoom.transform, d3.zoomIdentity);
+  draw();
+});
+
+// Load data
+async function loadData() {
+  const resp = await fetch('measurements.txt');
+  const text = await resp.text();
+  const lines = text.trim().split('\n');
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].trim().split(/\s+/);
+    if (cols.length < 8) continue;
+    const fn = cols[0];
+    if (!fn) continue;
+    const bm = parseFloat(cols[2]);
+    const sm = parseFloat(cols[4]);
+    const hm = parseFloat(cols[6]);
+    if (isNaN(bm) || isNaN(sm) || isNaN(hm)) continue;
+    allData.push({
+      filename: fn,
+      group: parseGroup(fn),
+      category: parseCat(fn),
+      brightness_median: bm,
+      saturation_median: sm,
+      hue_median: hm
+    });
+  }
+  console.log('Loaded:', allData.length);
+  buildScales();
+  draw();
+}
+
+window.addEventListener('resize', () => {
+  resize();
+  buildScales();
+  draw();
+});
+
+loadData();
+</script>
+</body>
+</html>
